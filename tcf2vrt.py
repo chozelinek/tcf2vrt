@@ -5,11 +5,22 @@
 #    tcf2vrt.py
 #    by José Manuel Martínez Martínez
 #===============================================================================
+import timeit
+start = timeit.default_timer()
 
 import sys
+import os
 import codecs # to handle properly unicode
 import re # to use regular expressions
-import argparse # to parse command-line arguments 
+import argparse # to parse command-line arguments
+import importlib
+
+#===============================================================================
+# Following code block is only needed if lxml is not used as the parser
+#===============================================================================
+
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 #===============================================================================
 # Parse command-line arguments
@@ -17,15 +28,47 @@ import argparse # to parse command-line arguments
 
 parser = argparse.ArgumentParser()
 parser.add_argument("infile", help="path to the input file in TCF format")
-parser.add_argument("outfile", help="path to the output file in VRT format")
+#parser.add_argument("outfile", help="path to the output file in VRT format")
+parser.add_argument("outformat", help="output format: vrt (input for CWB) in.xml (inline XML annotation)")
+#format arguments should be parsed, to check that the values are valid formats, see 
 args = parser.parse_args()
 
 infile = args.infile
-outfile = args.outfile
+#outfile = args.outfile
+outformat = args.outformat
+
+def check_outformat():
+    knownformats = ["vrt","in.xml"]
+    if any(item == outformat for item in knownformats):
+        pass
+    else:
+        sys.exit("Ups! '"+outformat+"' is not a valid output format!\nTry with: '"+"' or '".join(knownformats)+"'. Conversion aborted!")
+        
+check_outformat()
 
 #===============================================================================
-# Import XML module module
+# Find out input file name, extension, path
 #===============================================================================
+
+(indirname, infilename) = os.path.split(infile)
+
+(inshortname, inextension) = os.path.splitext(infilename) # shortname can be used as text ID
+
+#===============================================================================
+# Produce output file name, extension, path
+#===============================================================================
+
+outextension = outformat
+
+outfilename = inshortname+"."+outextension
+
+outfile = os.path.join(indirname,outfilename) # we can provide as command line argument the format/extension
+
+#===============================================================================
+# Import XML module
+#===============================================================================
+
+import xml.etree.ElementTree as etree
 
 try:
     from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
@@ -37,158 +80,185 @@ except importError:
     except importError:
         import xml.etree.ElementTree as etree
         print "running with ElementTree"
-
 #===============================================================================
 # Read the input file
 #===============================================================================
 
-# check which tcf layers are present. This can be done at the very beginning or
-# per function/element manipulation. Or handle exceptions with try. Because if
-# the elements are no present we will get an error and the script will be
-# aborted. IMPORTANT
-
-# For an off-line version we might want to convert only a few layers (specify
-# them, etc), for an on-line version we want to convert all layers contained in
-# a tcf file at a particular point of the pipeline
-
-# I think the easiest approach is to check which layers are there and convert
-# them if we have an algorithm for it. If not, just ignore the layer.
-
-# generate kind of metadata, like which tools have been used, or which tagset has been used
-
-# create functions whenever it is posible
-
-# infile = sys.argv[1] # input file
-# outfile = sys.argv[2] # output file
-
 with codecs.open(infile, encoding='utf-8', mode='r') as input:
-    tree = etree.parse(input)
+    tree = etree.parse(input) # If XML is not well formed will rise an exception
 
-# declare a namespace to avoid typing the whole URI again and again?
-dspin = "{http://www.dspin.de/data/textcorpus}"
+# declare namespaces to avoid typing the whole URI again and again?
+tc = "{http://www.dspin.de/data/textcorpus}"
+cmd = "{http://www.clarin.eu/cmd/}"
+md = "{http://www.dspin.de/data/metadata}"
 
-layers = tree.find('{}TextCorpus'.format(dspin)) # We get the element that contains all the annotation layers in the file
+#===============================================================================
+# Find out which layers are present in the file and check tokens
+#===============================================================================
 
-print len(layers) # How many layers we have
+layers = tree.find('{}TextCorpus'.format(tc)) # We get the element that contains all the annotation layers in the file
 
-for child in layers:
-    print child.tag,'\t', child.attrib # Print all layers and attributes
+elements = ((etree.QName(layer)).localname for layer in layers) # Get only the local names of the layers
 
-# we need to classify the different layers as positional attribute or structural attribute, do we need some kind of dictionary with this information?
+def layer_is_present(layername):
+    if any(item.tag == '{}{}'.format(tc,layername) for item in layers):
+        return True
+    else:
+        return False
+
+def tokens_is_present():
+    """
+    Function to check if the tokens layer is present
+    """
+    if layer_is_present("tokens") == True:
+        pass
+    else:
+        sys.exit("Ups! 'tokens' layer is not present, conversion aborted.")        
+
+tokens_is_present() # check if tokens is present, if not abort
+
+#===============================================================================
+# Create the text element
+#===============================================================================
+
+text = etree.Element('text')
+
+#===============================================================================
+# Add metadata to text element
+#===============================================================================
+
+#file ID, the name of the file
+
+text.set("id", inshortname)
+
+#language
+
+text.set("lang", (tree.find('{}TextCorpus'.format(tc))).attrib["lang"])
+
+#PIDs of all ToolsInChain
+
+def get_tools():
+    toolsinchain = tree.findall('//{}PID'.format(cmd)) # find the PIDs of all the tools used
+    tools = []
+    for i in toolsinchain:
+        item = i.text
+        item = re.sub(r"(http://hdl.handle.net/)?(.+)", r"\2", item)
+        tools.append(item)
+    text.set("tools", " ".join(tools))
+    
+get_tools()
+
+#===============================================================================
+# Process positional attributes
+#===============================================================================
+
+#positional_elements = ["lemmas","POStags","morphology","namedEntities","orthography","depparsing"]
+
+positional_elements = ["POStags","lemmas"]
 
 #===============================================================================
 # Add positional attributes to tokens
 #===============================================================================
 
-# The following block adds to each token element an attribute per each layer containing positional information
-
-# this function works as long as the tcf element contains the token ID as
-# attribute and the text/content is the info to be taken as attrib. For example:
-# lemma, tag. Moreover, every token has always its counterpart in the particular
-# layer. For some layers, that will be the case, for other layers won't. Some
-# checking has to be introduced, like in norm layer.
-
-# we might need a method to process each layer if necessary, and transform the
-# information in something that can be used by add_positional_attrib
-
-# May we need to define a class for attributes, an attribute has to contain the
-# tcf nomenclature, our vrt nomenclature, and if they are positional or
-# structural? Is it enough to have a kind of data structure containing all this
-# information?
-
-def add_positional_attrib(id,element,attribute): 
-    positional_element = tree.find('//{}{}[@tokenIDs="{}"]'.format(dspin,element,id))
+def add_positional_attrib(id,element,attribute):
+    positional_element = tree.find('//{}{}[@tokenIDs="{}"]'.format(tc,element,id))
+    token = tree.find('//{}token[@ID="{}"]'.format(tc,id))
     token.attrib[attribute] = positional_element.text
-    
-positional_elements = [("lemma","lemma"), ("tag","pos")] # list of tuples: each
-# list element is a layer/positional attribute, each element has two values: the
-# name of the element in tcf and the name of the attribute in vrt
 
-for token in tree.findall('//{}token'.format(dspin)):
-    ID = token.attrib["ID"]
+# We iterate over the list of positional elements that we have already implemented
+# Is there a more elegant way to pass the variables to the functions in the modules imported?
+
+def process_positional_elements():
+    processed_positional_attrib = []
     for item in positional_elements:
-        add_positional_attrib(ID,item[0],item[1])
-    """
-    # pos
-    tag = tree.find('//{}tag[@tokenIDs="{}"]'.format(dspin,ID))
-    token.attrib["pos"] = tag.text
-    # lemma
-    lemma = tree.find('//{}lemma[@tokenIDs="{}"]'.format(dspin,ID))
-    token.attrib["lemma"] = lemma.text
-    """
-    """
-    # norm
-    norm = tree.find('//{}correction[@tokenIDs="{}"]'.format(dspin,ID))
-    if norm == None:
-        token.attrib["norm"] = token.text
-    else:
-        token.attrib["norm"] = norm.text
-    print(token.attrib["norm"])
-    """
+        if layer_is_present(item):
+            module = importlib.import_module(item, package=None)
+            module.tree = tree
+            module.tc = tc
+            module.text = text
+            module.etree = etree
+            (id_attrib,element,attribute,elements) = module.function() # as a convention I can call all the functions processing the layer function
+            for i in elements:
+                id = i.attrib["{}".format(id_attrib)]
+                add_positional_attrib(id,element,attribute)
+            processed_positional_attrib.append(attribute)
+    text.set("p_attributes", " ".join(processed_positional_attrib))
+
+process_positional_elements()
+
 #===============================================================================
-# Construct the output tree
+# Build the output tree
 #===============================================================================
-
-# what value should be given to the id attribute? The name of the file without
-# the extension? And checking that is a valid token (no strange characters and
-# starting with an alphabetic character)
-
-text = etree.Element('text', attrib={'id':"text1"})
-
-# create a general function to reconstruct the information as structural inline
+# create a general function to reconstruct the information as structural in-line
 # XML
 
-"""
-structural_elements = [("sentence","s", "text")] # list of tuples: each list element is
+#structural_elements = [("sentence","s"),("text","text")] # list of tuples: each list element is
 # a structural attribute, each element has three values: the name of the element
 # in tcf, the name of the attribute in vrt, and the parent
-"""
 
 # we need also a structure, at least the parent of the structural element to be constructed
 
 # since there are only a few potential structural attributes it might be better
 # to have ad hoc functions for each of this structures, since each of this
 # structural attributes will be a different challenge.
+def build_sentences():
+    """Function to reconstruct sentences."""
+    tree_sentences = tree.findall('//{}sentence'.format(tc))
+    for sentence in tree_sentences:
+        s = etree.SubElement(text, "s")
+        s.attrib["ID"] = sentence.attrib["ID"]
+        s_tokenIDs = sentence.attrib["tokenIDs"].split(" ")
+        for i in s_tokenIDs:
+            word = tree.find('//{}token[@ID="{}"]'.format(tc,i))
+            word.tag = "token"
+            s.append(word)
+
+build_sentences()
+
+#===============================================================================
+# Save the output
+#===============================================================================
+
+def serialize_inxml(xml):
+    """Output serialization in XML format with in-line annotation"""
+    xml.write(outfile, encoding="utf8", pretty_print=True, xml_declaration=True, method="xml")
+
+def serialize_vrt(xml):
+    """Output serialization in XML/VRT format suitable for CWB"""
+    tokens = xml.findall('//token')
+    for token in tokens:
+        #string = "\t".join([token.text,token.attrib["pos"],token.attrib["lemma"],token.attrib["ID"]]) # convert token into string
+        string = "\t".join([token.text,token.attrib["pos"],token.attrib["ID"]]) # convert token into string
+        parent = xml.find('//token[@ID="{}"]..'.format(token.attrib["ID"])) # get the parent element
+        if parent.text == None:
+            parent.text = string
+        else:
+            parent.text = "\n".join([parent.text,string])
+        parent.remove(token)
+    vrt = etree.tostring(xml, encoding='unicode', method='xml') # convert the XML tree into a string to manipulate it
+    vrt = re.sub(r"><", r">\n<", vrt)
+    vrt = re.sub(r">([^<\n])", r">\n\1", vrt)
+    vrt = re.sub(r"([^\n])<", r"\1\n<", vrt)
+    vrt = etree.ElementTree(etree.fromstring(vrt)) # parse the string as an element and convert the element in a tree
+    vrt.write(outfile, encoding="utf8", xml_declaration=True, method="xml") # write the result to a file    
+  
+def serialize():
+    """Output serialization"""
+    xml = etree.ElementTree(text)
+    if outformat == "in.xml":
+        serialize_inxml(xml)
+    elif outformat == "vrt":
+        serialize_vrt(xml) 
     
-tree_sentences = tree.findall('//{}sentence'.format(dspin))
-
-for sentence in tree_sentences:
-    s = etree.SubElement(text, "s")
-    s.attrib["ID"] = sentence.attrib["ID"]
-    s_tokenIDs = sentence.attrib["tokenIDs"].split(" ")
-    for i in s_tokenIDs:
-        word = tree.find('//{}token[@ID="{}"]'.format(dspin,i))
-        word.tag = "token"
-        s.append(word)
-
-xml = etree.ElementTree(text)
+serialize()
 
 #===============================================================================
-# Save the output as a XML file
+# Finished!
 #===============================================================================
 
-# xml.write("out.xml", encoding="utf8", pretty_print=True, xml_declaration=True, method="xml")
+stop = timeit.default_timer()
 
-#===============================================================================
-# Save the output as a VRT file
-#===============================================================================
+runtime = stop - start
+runtime = '%.2f' % runtime
 
-tokens = xml.findall('//token')
-
-for token in tokens:
-    string = "\t".join([token.text,token.attrib["pos"],token.attrib["lemma"],token.attrib["ID"]]) # convert token into string
-    parent = xml.find('//token[@ID="{}"]..'.format(token.attrib["ID"])) # get the parent element
-    if parent.text == None:
-        parent.text = string
-    else:
-        parent.text = "\n".join([parent.text,string])
-    parent.remove(token)
-
-vrt = etree.tostring(xml, encoding='unicode', method='xml') # convert the XML tree into a string to manipulate it
-vrt = re.sub(r"><", r">\n<", vrt)
-vrt = re.sub(r">([^<\n])", r">\n\1", vrt)
-vrt = re.sub(r"([^\n])<", r"\1\n<", vrt)
-
-vrt = etree.ElementTree(etree.fromstring(vrt)) # parse the string as an element and convert the element in a tree
-
-vrt.write("out.vrt", encoding="utf8", xml_declaration=True, method="xml") # write the result to a file
+print(outfile+" obtained in "+runtime+" seconds!\n=============")
