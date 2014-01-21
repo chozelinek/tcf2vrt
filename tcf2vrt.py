@@ -6,7 +6,7 @@
 #    by José Manuel Martínez Martínez
 #===============================================================================
 import timeit
-start = timeit.default_timer()
+start1 = timeit.default_timer()
 
 import sys
 import os
@@ -101,7 +101,7 @@ layers = tree.find('{}TextCorpus'.format(tc)) # We get the element that contains
 elements = ((etree.QName(layer)).localname for layer in layers) # Get only the local names of the layers
 
 def layer_is_present(layername):
-    if any(item.tag == '{}{}'.format(tc,layername) for item in layers):
+    if any(item.tag == '{}{}'.format(tc,layername) for item in layers):#can this with in instead any
         return True
     else:
         return False
@@ -113,7 +113,7 @@ def tokens_is_present():
     if layer_is_present("tokens") == True:
         pass
     else:
-        sys.exit("Ups! 'tokens' layer is not present, conversion aborted.")        
+        sys.exit("Ups! 'tokens' layer is not present, conversion aborted.")
 
 tokens_is_present() # check if tokens is present, if not abort
 
@@ -160,6 +160,7 @@ positional_elements = ["POStags","lemmas"]
 # Add positional attributes to tokens
 #===============================================================================
 
+
 def add_positional_attrib(id,element,attribute):
     positional_element = tree.find('//{}{}[@tokenIDs="{}"]'.format(tc,element,id))
     token = tree.find('//{}token[@ID="{}"]'.format(tc,id))
@@ -168,9 +169,11 @@ def add_positional_attrib(id,element,attribute):
 # We iterate over the list of positional elements that we have already implemented
 # Is there a more elegant way to pass the variables to the functions in the modules imported?
 
+start3 = timeit.default_timer()
 def process_positional_elements():
     processed_positional_attrib = []
     for item in positional_elements:
+        start2 = timeit.default_timer()
         if layer_is_present(item):
             module = importlib.import_module(item, package=None)
             module.tree = tree
@@ -178,11 +181,22 @@ def process_positional_elements():
             module.text = text
             module.etree = etree
             (id_attrib,element,attribute,elements) = module.function() # as a convention I can call all the functions processing the layer function
+            stop2 = timeit.default_timer()
+            runtime2 = stop2 - start2
+            runtime2 = '%.2f' % runtime2
+            function2 = 'add_positional_attrib'
+            print function2+'\t'+runtime2
             for i in elements:
                 id = i.attrib["{}".format(id_attrib)]
                 add_positional_attrib(id,element,attribute)
             processed_positional_attrib.append(attribute)
     text.set("p_attributes", " ".join(processed_positional_attrib))
+stop3 = timeit.default_timer()
+
+runtime3 = stop3 - start3
+runtime3 = '%.2f' % runtime3
+function3 = 'process_positional_elements'
+print function3+'\t'+runtime3        
 
 process_positional_elements()
 
@@ -256,9 +270,9 @@ serialize()
 # Finished!
 #===============================================================================
 
-stop = timeit.default_timer()
+stop1 = timeit.default_timer()
 
-runtime = stop - start
+runtime = stop1 - start1
 runtime = '%.2f' % runtime
 
-print(outfile+" obtained in "+runtime+" seconds!\n=============")
+print outfile+" obtained in "+runtime+" seconds!\n============="
