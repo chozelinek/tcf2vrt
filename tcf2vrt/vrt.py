@@ -37,11 +37,26 @@ class VrtWriter(object):
         
     def __str__(self):
         return "-------------"
-
-    def serialize_vrt(self):
-        """Output serialization in XML/VRT format suitable for CWB"""
-
-        xslt_root = etree.XML("""
+    
+    def get_layers(self):
+        layers = self.xmltree.find('.//token')
+        layers = layers.attrib.keys()
+        if 'id' in layers:
+            layers.remove('id')
+        return layers
+#         
+#     def layer_is_present(self,layername):
+#         if any(item.tag == '{}{}'.format(self.tc,layername) for item in self.layers):
+#             return True
+#         else:
+#             return False
+#     
+    def generate_tokeniser_template(self):
+        positional_attributes = self.get_layers()
+        pos_string = ''
+        for i in positional_attributes:
+            pos_string += '                <xsl:text>&#x9;</xsl:text>\n                <xsl:value-of select="./@{}"/>\n'.format(i)
+        xslt_template = """
         <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
         xmlns:xs="http://www.w3.org/2001/XMLSchema" exclude-result-prefixes="xs"
         xmlns:xd="http://www.oxygenxml.com/ns/doc/xsl" version="1.0">
@@ -53,16 +68,41 @@ class VrtWriter(object):
             </xsl:template>
             <xsl:template match="token">
                 <xsl:value-of select="./text()"/>
-                <xsl:text>&#x9;</xsl:text>
-                <xsl:value-of select="./@pos"/>
-                <xsl:text>&#x9;</xsl:text>
-                <xsl:value-of select="./@lemma"/>
-                <xsl:text>&#x9;</xsl:text>
-                <xsl:value-of select="./@id"/>
+{}
                 <xsl:text>&#xA;</xsl:text>
             </xsl:template>
         </xsl:stylesheet>
-        """)
+        """.format(pos_string)
+        print xslt_template
+        return xslt_template
+    
+    def serialize_vrt(self):
+        """Output serialization in XML/VRT format suitable for CWB"""
+
+#         xslt_root = etree.XML("""
+#         <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+#         xmlns:xs="http://www.w3.org/2001/XMLSchema" exclude-result-prefixes="xs"
+#         xmlns:xd="http://www.oxygenxml.com/ns/doc/xsl" version="1.0">
+#             <xsl:output omit-xml-declaration="yes" indent="no"/>
+#             <xsl:template match="node()|@*">
+#              <xsl:copy>
+#                <xsl:apply-templates select="node()|@*"/>
+#              </xsl:copy>
+#             </xsl:template>
+#             <xsl:template match="token">
+#                 <xsl:value-of select="./text()"/>
+#                 <xsl:text>&#x9;</xsl:text>
+#                 <xsl:value-of select="./@pos"/>
+#                 <xsl:text>&#x9;</xsl:text>
+#                 <xsl:value-of select="./@lemma"/>
+#                 <xsl:text>&#x9;</xsl:text>
+#                 <xsl:value-of select="./@id"/>
+#                 <xsl:text>&#xA;</xsl:text>
+#             </xsl:template>
+#         </xsl:stylesheet>
+#         """)
+        xslt_template = self.generate_tokeniser_template()
+        xslt_root = etree.XML(xslt_template)
         tokenizator = etree.XSLT(xslt_root)
         vrt = tokenizator(self.xmltree)
         vrt = etree.tostring(vrt, encoding='utf-8', method='xml')
