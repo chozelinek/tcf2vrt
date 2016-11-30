@@ -16,18 +16,8 @@ from collections import OrderedDict
 # Import XML module
 #===============================================================================
 
-import xml.etree.ElementTree as etree
 
-try:
-    from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
-#     print "running with lxml.etree"
-except importError:
-    try:
-        import xml.etree.cElementTree as etree
-        print "running with cElementTree"
-    except importError:
-        import xml.etree.ElementTree as etree
-        print "running with ElementTree"
+from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
 
 class TcfReader(object):
     """Read a text in TCF format."""
@@ -190,7 +180,7 @@ class TcfReader(object):
                     tbr.getparent().remove(tbr)
                     r_counter += -1
         else:
-            print "no named entities!" 
+            print("no named entities!") 
 
 # Some of the loops could be converted into functions
     def get_textstructure(self):
@@ -247,7 +237,7 @@ class TcfReader(object):
 #             else:
 #                 print 'Unknown structural element'
         else:
-            print 'No structural elements found'
+            print('No structural elements found')
             self.get_sentences(self.xml)
             self.get_entities()
     
@@ -260,8 +250,8 @@ class TcfReader(object):
         self.get_pos_elements()
         self.get_dependencies()
         self.get_textstructure()
-        for i in self.tok_dic:
-            print self.tok_dic[i]
+#         for i in self.tok_dic:
+#             print(self.tok_dic[i])
         
 #         print etree.tostring(self.xmltree, encoding='unicode', method='xml',pretty_print=True)
         return self.xmltree

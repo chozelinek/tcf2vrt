@@ -14,18 +14,7 @@ from itertools import chain
 # Import XML module
 #===============================================================================
 
-import xml.etree.ElementTree as etree
-
-try:
-    from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
-#     print "running with lxml.etree"
-except importError:
-    try:
-        import xml.etree.cElementTree as etree
-        print "running with cElementTree"
-    except importError:
-        import xml.etree.ElementTree as etree
-        print "running with ElementTree"
+from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
 
 class VrtWriter(object):
     """Save a corpus in VRT format."""
@@ -41,8 +30,8 @@ class VrtWriter(object):
     def get_layers(self):
         layers = self.xmltree.find('.//token')
         layers = layers.attrib.keys()
-        if 'id' in layers:
-            layers.remove('id')
+#         if 'id' in layers:
+#             layers.remove('id')
         return layers
 #         
 #     def layer_is_present(self,layername):
@@ -73,7 +62,6 @@ class VrtWriter(object):
             </xsl:template>
         </xsl:stylesheet>
         """.format(pos_string)
-        print xslt_template
         return xslt_template
     
     def serialize_vrt(self):
@@ -105,7 +93,7 @@ class VrtWriter(object):
         xslt_root = etree.XML(xslt_template)
         tokenizator = etree.XSLT(xslt_root)
         vrt = tokenizator(self.xmltree)
-        vrt = etree.tostring(vrt, encoding='utf-8', method='xml')
+        vrt = etree.tostring(vrt, encoding='utf-8', method='xml').decode()
 #         vrt = etree.tostring(self.xmltree, encoding='utf-8', method='xml') # convert the XML tree into a string to manipulate it
         vrt = re.sub(r"><", r">\n<", vrt)
         vrt = re.sub(r">([^<\n])", r">\n\1", vrt)

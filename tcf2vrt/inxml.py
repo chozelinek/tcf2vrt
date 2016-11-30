@@ -13,18 +13,7 @@ import sys
 # Import XML module
 #===============================================================================
 
-import xml.etree.ElementTree as etree
-
-try:
-    from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
-#     print "running with lxml.etree"
-except importError:
-    try:
-        import xml.etree.cElementTree as etree
-        print "running with cElementTree"
-    except importError:
-        import xml.etree.ElementTree as etree
-        print "running with ElementTree"
+from lxml import etree # if we don't need any of the fancy things provided by lxml we should drop it, although it does not hurt
 
 class InXmlWriter(object):
     """Save a corpus in TCF format."""
