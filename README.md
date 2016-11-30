@@ -15,11 +15,9 @@ Convert all files in input folder with extension `.tcf` into VRT files and save 
 python3 tcf2vrt.py -i /path/to/input/folder/ -o /path/to/output/folder -f vrt -e *.tcf
 ```
 
-Get more information running:
+Get more information running `python3 tcf2vrt.py -h`:
 
 ```
-python3 tcf2vrt.py -h
-
 usage: tcf2vrt.py [-h] -i INPUT [-o OUTPUT] [-e EXTENSION] -f {vrt,xml}
 
 optional arguments:
